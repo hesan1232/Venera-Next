@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as p;
+import 'package:venera_next/features/comic_storage/comic_file_rules.dart';
 import 'package:venera_next/foundation/file_system.dart';
 import 'local_comic_model.dart';
 import 'local_storage_relocation.dart';
@@ -182,7 +183,8 @@ class LocalStorageMigration {
         p.isWithin(destinationPath, sourcePath)) {
       return 'Source and destination directories must not overlap';
     }
-    if (!await destination.list().isEmpty) return 'Directory is not empty';
+    final conflict = await _destinationConflict(source, destination);
+    if (conflict != null) return conflict;
     final snapshot = relocation?.snapshot();
     final targets = await relocation?.destinations(
       source.path,
@@ -228,6 +230,42 @@ class LocalStorageMigration {
       reportCleanupError(error, stack);
     }
     return null;
+  }
+
+  /// Decides whether a destination can receive the library.
+  ///
+  /// Requiring an empty directory looked safe but blocks the two situations
+  /// users actually hit: moving the library *back* into a folder this app
+  /// already stamped with `.nomedia`, and moving it into a folder that holds
+  /// unrelated files (a normal `Books`/`Download` directory). Only a real
+  /// name clash is dangerous, because the copy would then silently merge two
+  /// libraries; everything else is a harmless merge.
+  Future<String?> _destinationConflict(
+    Directory source,
+    Directory destination,
+  ) async {
+    final existing = await _managedNames(destination);
+    if (existing.isEmpty) return null;
+    final incoming = await _managedNames(source);
+    final clashes = existing.where(incoming.contains).toList()..sort();
+    if (clashes.isEmpty) return null;
+    final listed = clashes.take(3).join(', ');
+    final more = clashes.length > 3 ? ' and ${clashes.length - 3} more' : '';
+    return 'Destination already contains $listed$more. '
+        'Choose an empty folder or remove those items first.';
+  }
+
+  /// Entry names a library would actually collide with. Dot files (the
+  /// `.nomedia` marker this app writes), `__MACOSX` and `.DS_Store` are never
+  /// comics, so they must not make a folder look "occupied".
+  Future<Set<String>> _managedNames(Directory directory) async {
+    final names = <String>{};
+    await for (final entity in directory.list()) {
+      final name = p.basename(entity.path);
+      if (isIgnoredComicStorageEntry(name)) continue;
+      names.add(name);
+    }
+    return names;
   }
 
   Future<void> _savePath(File target, String path) async {

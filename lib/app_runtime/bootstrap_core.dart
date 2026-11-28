@@ -12,6 +12,7 @@ import 'package:venera_next/features/history/history_manager.dart';
 import 'package:venera_next/features/local_comics/local.dart';
 import 'package:venera_next/features/sync/app_data_import_journal.dart';
 import 'package:venera_next/features/sync/data_sync_ownership.dart';
+import 'package:venera_next/features/web_service/web_service_runtime.dart';
 import 'package:venera_next/foundation/app.dart';
 import 'package:venera_next/foundation/appdata.dart';
 import 'package:venera_next/foundation/cache_manager.dart';
@@ -23,6 +24,8 @@ import 'package:venera_next/foundation/translations.dart';
 import 'package:venera_next/network/cookie_jar.dart';
 
 import 'package:venera_next/features/sync/legacy_auto_sync_migration.dart';
+import 'package:venera_next/foundation/comic_type.dart';
+import 'package:venera_next/network/images.dart';
 
 import 'core_bootstrap.dart';
 import 'cache_settings.dart';
@@ -224,8 +227,23 @@ CoreBootstrap createCoreBootstrap({
       registerProducer('cache', cache.dispose);
       final cacheSettings = CacheSettingsBinding(appdata.settings, cache);
       registerProducer('cache settings', cacheSettings.dispose);
+      // Reader pages of bookshelf comics are cached persistently (offline,
+      // no TTL); everything else uses the short temporary cache. The favorites
+      // store is already initialized in the `stores` phase above.
+      bool isShelved(String cid, String? sourceKey) {
+        if (sourceKey == null || cid.isEmpty) return false;
+        return LocalFavoritesManager().isExist(cid, ComicType.fromKey(sourceKey));
+      }
+
+      ImageDownloader.configureImageRetention((cid, sourceKey) =>
+          isShelved(cid, sourceKey));
       // The cache owns and drains this scan; UI startup need not await it.
       unawaited(cache.start());
+      // The LAN web reader is optional and never blocks UI startup. Its close
+      // is registered so core shutdown always releases the socket.
+      final webService = WebServiceRuntime.instance;
+      registerProducer('web service', webService.closeAndWait);
+      unawaited(webService.start());
     },
   );
 }

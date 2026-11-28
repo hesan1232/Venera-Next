@@ -12,6 +12,8 @@ import 'package:venera_next/features/settings/network.dart';
 import 'package:venera_next/features/settings/explore_settings.dart';
 import 'package:venera_next/features/settings/app.dart';
 import 'package:venera_next/features/settings/reader.dart';
+import 'package:venera_next/features/settings/mirror_health.dart';
+import 'package:venera_next/features/settings/web_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({this.initialPage = -1, super.key});
@@ -31,24 +33,28 @@ class _SettingsPageState extends State<SettingsPage> {
 
   final categories = <String>[
     "Explore",
+    "Mirror health",
     "Reading",
     "Reading statistics",
     "Appearance",
     "Local Favorites",
     "APP",
     "Network",
+    "Web Service",
     "About",
     "Debug",
   ];
 
   final icons = <IconData>[
     Icons.explore,
+    Icons.speed,
     Icons.book,
     Icons.query_stats,
     Icons.color_lens,
     Icons.collections_bookmark_rounded,
     Icons.apps,
     Icons.public,
+    Icons.web,
     Icons.info,
     Icons.bug_report,
   ];
@@ -222,14 +228,16 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildSettingsContent(int pageIndex) {
     return switch (pageIndex) {
       0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const ReadingStatsPage(),
-      3 => const AppearanceSettings(),
-      4 => const LocalFavoritesSettings(),
-      5 => const AppSettings(),
-      6 => const NetworkSettings(),
-      7 => const AboutSettings(),
-      8 => const DebugPage(),
+      1 => const MirrorHealthPage(),
+      2 => const ReaderSettings(),
+      3 => const ReadingStatsPage(),
+      4 => const AppearanceSettings(),
+      5 => const LocalFavoritesSettings(),
+      6 => const AppSettings(),
+      7 => const NetworkSettings(),
+      8 => const WebServiceSettings(),
+      9 => const AboutSettings(),
+      10 => const DebugPage(),
       _ => throw UnimplementedError(),
     };
   }
@@ -248,14 +256,16 @@ class _SettingsDetailPage extends StatelessWidget {
   Widget _buildPage() {
     return switch (pageIndex) {
       0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const ReadingStatsPage(),
-      3 => const AppearanceSettings(),
-      4 => const LocalFavoritesSettings(),
-      5 => const AppSettings(),
-      6 => const NetworkSettings(),
-      7 => const AboutSettings(),
-      8 => const DebugPage(),
+      1 => const MirrorHealthPage(),
+      2 => const ReaderSettings(),
+      3 => const ReadingStatsPage(),
+      4 => const AppearanceSettings(),
+      5 => const LocalFavoritesSettings(),
+      6 => const AppSettings(),
+      7 => const NetworkSettings(),
+      8 => const WebServiceSettings(),
+      9 => const AboutSettings(),
+      10 => const DebugPage(),
       _ => throw UnimplementedError(),
     };
   }

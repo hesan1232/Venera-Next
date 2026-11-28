@@ -28,6 +28,7 @@
 
 - [1. 项目介绍](#项目介绍)
 - [2. 功能亮点](#功能亮点)
+  - [2.5 本分支定制功能](#本分支定制功能)
 - [3. 下载安装](#下载安装)
   - [3.1 Android 手机与平板](#android-手机与平板)
   - [3.2 Android TV](#android-tv)
@@ -36,8 +37,11 @@
   - [3.5 Linux](#linux)
   - [3.6 iOS](#ios)
   - [3.7 macOS](#macos)
+  - [3.8 本分支构建产物](#本分支构建产物)
 - [4. 快速上手](#快速上手)
 - [5. 使用说明](#使用说明)
+  - [5.3 夜间与墨水屏阅读](#夜间与墨水屏阅读)
+  - [5.5 本地漫画与离线下载](#本地漫画与离线下载)
 - [6. 漫画源开发](#漫画源开发)
 - [7. FAQ](#faq)
 - [8. 开发者入口](#开发者入口)
@@ -55,6 +59,9 @@
 
 [VeneraNext](https://github.com/CyrilPeng/venera-next) 是基于 [Venera](https://github.com/venera-app/venera) 持续开发的 Flutter 漫画阅读器，支持 **Android、Android TV、Windows、Linux、iOS 和 macOS**，另提供 **HarmonyOS 测试版**。
 
+> [!NOTE]
+> **关于本仓库**：这是 [`CyrilPeng/Venera-Next`](https://github.com/CyrilPeng/Venera-Next) 的本地定制分支（基线 `v1.18.4+253`），地址 <https://github.com/hesan1232/Venera-Next>。除上游功能外，额外加入了 Web 服务 / OPDS 增强、跨章预加载、镜像站测速等阅读体验优化，集中见 [2.5 本分支定制功能](#本分支定制功能)。上游的新版本仍可通过 `origin` 合并进来。本文其余绝大多数说明与上游一致。
+
 本分支围绕“少一点打断，多一点阅读”打磨日常体验：瀑布流跨章连读不用退出，长按收藏省去选择收藏夹的步骤，夜间和墨水屏设备各有阅读设置。本地导入、离线下载、阅读统计与多设备同步，让找书、看漫画和追连载更方便。
 
 原项目的 JavaScript 漫画源扩展、本地阅读、搜索与分类、收藏下载，以及按源提供的登录、评论和评分能力继续保留。
@@ -65,8 +72,10 @@
 > 本仓库只维护阅读器本体和扩展运行环境，不提供、内置、托管或推荐漫画源。网络漫画源需由用户自行合法配置，具体内容及源站可用性由相应扩展和服务决定。
 
 <div align="center">
+  <a href="https://github.com/hesan1232/Venera-Next">
+    <img alt="本分支仓库" src="https://img.shields.io/badge/GitHub-本分支-181717?style=for-the-badge&logo=github&logoColor=white" /></a>
   <a href="https://github.com/CyrilPeng/Venera-Next">
-    <img alt="GitHub 主仓库" src="https://img.shields.io/badge/GitHub-主仓库-181717?style=for-the-badge&logo=github&logoColor=white" /></a>
+    <img alt="GitHub 上游项目" src="https://img.shields.io/badge/GitHub-上游项目-181717?style=for-the-badge&logo=github&logoColor=white" /></a>
   <a href="https://gitee.com/CyrilPeng/venera-next">
     <img alt="Gitee 国内镜像" src="https://img.shields.io/badge/Gitee-国内镜像-C71D23?style=for-the-badge&logo=gitee&logoColor=white" /></a>
 </div>
@@ -119,6 +128,15 @@
 - **收藏与离线阅读**：本地收藏、网络收藏、历史记录、图片收藏和下载队列，下载的章节可离线阅读。
 - **按源启用的互动**：登录、Cookie、评论回复、点赞和评分等，由扩展实际支持的能力决定。
 - **跨设备使用**：WebDAV 数据同步与导入导出，以及可供脚本调用的[无头命令模式](doc/user/headless.zh.md)。
+
+<a id="本分支定制功能"></a>
+### 2.5 本分支定制功能
+
+以下为本分支在 `v1.18.4` 之上新增的能力，不在上游版本中：
+
+- **图片缓存分层**：书架漫画写入持久缓存（不过期、不参与容量淘汰），非书架浏览写入临时缓存（1 天滑动过期）。
+- **Web 服务与 OPDS**：界面与接口参考 Komga 风格，支持 Library → Series → Book → Page 路径、分页/封面/阅读进度语义、OPDS 1.2；搜索历史与结果缓存、搜索结果封面回退、返回恢复。开启 Web 服务时可申请忽略电池优化。
+- **跨章预加载**：瀑布流接近章末自动预热下一章，画廊模式同样预热相邻章节，章节末尾点击翻页也能进入下一章。
 
 ---
 
@@ -208,6 +226,20 @@ Linux 安装包基于 Ubuntu 22.04 构建，glibc 基线为 2.35。当前稳定�
 
 从 [最新稳定版](https://github.com/CyrilPeng/venera-next/releases/latest) 下载 `VeneraNext-xxx.dmg`。
 
+<a id="本分支构建产物"></a>
+### 3.8 本分支构建产物
+
+[2.5 本分支定制功能](#本分支定制功能)不在上游 Release 中，需要自行从源码构建。以 Android arm64 Release 为例：
+
+```bash
+cd Venera-Next
+flutter build apk --release --flavor mobile --target-platform android-arm64 --no-pub
+```
+
+产物为 `build/app/outputs/flutter-apk/app-mobile-release.apk`（带 Rust 原生库的单 ABI 交付件；`app-arm64-v8a-*` 是分包空壳，不要当作安装包分发）。
+
+Windows 上建议把 `GRADLE_USER_HOME` 与 `TEMP/TMP` 指向空间充足的磁盘（例如 D 盘），避免 Gradle / CMake 中间文件占满系统盘；构建前确认没有残留的 `java` / `dart` 进程，否则可能出现文件占用或并发抢目录导致的 `AccessDeniedException`。更多见[构建与开发](doc/development/build.zh.md)。
+
 ---
 
 <a id="快速上手"></a>
@@ -250,8 +282,7 @@ Linux 安装包基于 Ubuntu 22.04 构建，glibc 基线为 2.35。当前稳定�
 ### 5.3 夜间与墨水屏阅读
 
 - **夜间调光**：在阅读器内开启（阅读设置或底部快捷面板均可），亮度 20%–100% 可调，只作用于应用内画面；应用本身的浅色/深色/跟随系统主题在“设置 → 外观”选择。
-- **墨水屏**：使用画廊模式并开启“电子墨水屏刷新”，可设置每 1–10 次翻页闪屏一次，时长为 100–1500 毫秒，样式有黑、白、先白后黑三种。连续与瀑布流模式不触发闪屏。
-
+- **墨水屏闪屏（上游功能）**：使用画廊模式并开启“电子墨水屏刷新”，可设置每 1–10 次翻页闪屏一次，时长为 100–1500 毫秒，样式有黑、白、先白后黑三种。连续与瀑布流模式不触发闪屏。
 <a id="收藏稍后阅读与追更"></a>
 ### 5.4 收藏、稍后阅读与追更
 
@@ -276,6 +307,12 @@ Linux 安装包基于 Ubuntu 22.04 构建，glibc 基线为 2.35。当前稳定�
 | 网络源下载 | 已下载章节进入本地漫画库，供离线阅读，也可用于后续导出和归档 |
 
 支持导出 CBZ、扫描恢复下载内容、删除章节和迁移存储位置。PDF/EPUB 导入会占用额外空间；文字型 EPUB、直接绘制的 SVG 页面、加密 PDF 和 MOBI/AZW/AZW3 暂不支持。目录示例、压缩包兼容规则及元数据模板见[本地漫画导入、CBZ 与 WebDAV 漫画库](doc/user/import_comic.zh.md)。
+
+**本分支的本地缓存行为**：
+
+- 书架漫画读取过的图片会写入持久缓存（不过期、不参与容量淘汰），退出阅读器后重进可从缓存读取，不必再从网络加载。
+- 非书架浏览只写入临时缓存，**1 天滑动过期**，并参与容量淘汰；不会把临时浏览的漫画混进本地库。
+- 更换本地库存储位置时，目标目录可以已有其他文件；只有出现同名漫画条目时才拒绝，以免合并两套库。导入 / 导出备份不受影响。
 
 <a id="网络漫画源"></a>
 ### 5.6 网络漫画源

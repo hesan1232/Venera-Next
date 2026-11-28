@@ -1,5 +1,6 @@
 import 'package:venera_next/foundation/application_preferences.dart';
 import 'package:venera_next/foundation/global_preference_store.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import 'package:venera_next/foundation/global_state.dart';
 import 'package:venera_next/foundation/log.dart';
 import 'package:venera_next/routing/app_links.dart';
 import 'package:venera_next/routing/settings.dart';
+import 'package:venera_next/features/settings/explore_settings.dart';
 import 'package:venera_next/foundation/extensions.dart';
 import 'package:venera_next/foundation/translations.dart';
 import 'package:venera_next/foundation/widget_utils.dart';
@@ -158,12 +160,14 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     findSearchSources();
-    var defaultSearchTarget = GlobalPreferenceStore(
-      appdata.settings,
-    ).read(DiscoveryPreferences.defaultSearchTarget);
-    if (defaultSearchTarget == "_aggregated_") {
-      aggregatedSearch = true;
-    } else if (defaultSearchTarget != null &&
+    final store = GlobalPreferenceStore(appdata.settings);
+    var defaultSearchTarget = store.read(DiscoveryPreferences.defaultSearchTarget);
+    // Old installs only recorded aggregation through `defaultSearchTarget`.
+    aggregatedSearch =
+        store.read(DiscoveryPreferences.aggregatedSearch) ||
+        defaultSearchTarget == "_aggregated_";
+    if (defaultSearchTarget != null &&
+        defaultSearchTarget != "_aggregated_" &&
         searchSources.contains(defaultSearchTarget)) {
       searchTarget = defaultSearchTarget;
     }
@@ -212,6 +216,23 @@ class _SearchPageState extends State<SearchPage> {
 
   void manageSearchSources() {
     showPopUpWidget(appNavigation.rootContext, setSearchSourcesWidget());
+  }
+
+  /// Persist the search page as the user left it, so the aggregated checkbox
+  /// and the last source are still selected on the next launch.
+  void rememberSearchMode(bool aggregated) {
+    unawaited(
+      appdata.updateSettings((settings) {
+        settings['aggregatedSearch'] = aggregated;
+        if (aggregated) {
+          settings['defaultSearchTarget'] = "_aggregated_";
+        } else if (searchTarget.isNotEmpty) {
+          settings['defaultSearchTarget'] = searchTarget;
+        } else {
+          settings['defaultSearchTarget'] = null;
+        }
+      }),
+    );
   }
 
   Widget buildEmpty() {
@@ -291,13 +312,14 @@ class _SearchPageState extends State<SearchPage> {
                 return OptionChip(
                   text: e.name,
                   isSelected: searchTarget == e.key || aggregatedSearch,
-                  onTap: () {
-                    if (aggregatedSearch) return;
-                    setState(() {
-                      searchTarget = e.key;
-                      useDefaultOptions();
-                    });
-                  },
+                    onTap: () {
+                      if (aggregatedSearch) return;
+                      setState(() {
+                        searchTarget = e.key;
+                        useDefaultOptions();
+                      });
+                      rememberSearchMode(false);
+                    },
                 );
               }).toList(),
             ),
@@ -307,10 +329,17 @@ class _SearchPageState extends State<SearchPage> {
               leading: Checkbox(
                 value: aggregatedSearch,
                 onChanged: (value) {
+                  final enabled = value ?? false;
                   setState(() {
-                    aggregatedSearch = value ?? false;
+                    aggregatedSearch = enabled;
                   });
+                  rememberSearchMode(enabled);
                 },
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: "Manage".tl,
+                onPressed: manageSearchSources,
               ),
             ),
           ],

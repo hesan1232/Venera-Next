@@ -39,6 +39,10 @@ import 'package:venera_next/features/comic_details/rating_dialog.dart';
 abstract mixin class ComicPageActions {
   void update();
 
+  /// Force a fresh details/chapters load, bypassing the cache. Implemented by
+  /// the page state so the menu can invalidate the cache and reload.
+  Future<void> forceRefreshDetails();
+
   BuildContext get context;
 
   MenuRouteController get contextMenus;
@@ -427,6 +431,11 @@ abstract mixin class ComicPageActions {
       context,
       Offset(context.width - 16, context.padding.top),
       [
+        MenuEntry(
+          icon: Icons.refresh,
+          text: "Refresh".tl,
+          onClick: () => forceRefreshDetails(),
+        ),
         MenuEntry(
           icon: Icons.copy,
           text: "Copy Title".tl,

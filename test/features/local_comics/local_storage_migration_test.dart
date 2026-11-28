@@ -161,14 +161,14 @@ void main() {
         ),
         isNotNull,
       );
-      File('${destination.path}/keep').writeAsStringSync('keep');
+      File('${destination.path}/page.jpg').writeAsStringSync('other');
       expect(
-        await migration.migrate(
+        (await migration.migrate(
           source: source,
           destination: destination,
           pathFile: pathFile,
-        ),
-        'Directory is not empty',
+        ))!,
+        contains('already contains page.jpg'),
       );
       expect(
         await migration.migrate(
@@ -182,4 +182,25 @@ void main() {
       expect(pathFile.readAsStringSync(), source.path);
     },
   );
+
+  test('merges into a folder that only holds unrelated files and app markers',
+      () async {
+    final migration = service();
+    // The marker this app itself writes must never block a move back in.
+    File('${destination.path}/.nomedia').writeAsStringSync('');
+    Directory('${destination.path}/keep').createSync();
+
+    expect(
+      await migration.migrate(
+        source: source,
+        destination: destination,
+        pathFile: pathFile,
+      ),
+      isNull,
+    );
+    expect(File('${destination.path}/page.jpg').readAsBytesSync(), [1, 2, 3]);
+    expect(File('${destination.path}/.nomedia').existsSync(), isTrue);
+    expect(Directory('${destination.path}/keep').existsSync(), isTrue);
+    expect(pathFile.readAsStringSync(), destination.path);
+  });
 }

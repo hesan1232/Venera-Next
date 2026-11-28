@@ -11,6 +11,21 @@ import 'app.dart';
 class CacheManager {
   static CacheManager? instance;
 
+  /// Default disk retention for an ordinary cache entry.
+  static const defaultDuration = 7 * 24 * 60 * 60 * 1000;
+
+  /// Short retention for images browsed outside the bookshelf.
+  static const temporaryDuration = 24 * 60 * 60 * 1000;
+
+  /// Written to the `type` column for pages of comics kept in the bookshelf.
+  /// Persistent entries never expire and are excluded from capacity eviction,
+  /// so re-opening a shelved comic always reads from disk (even offline).
+  static const String persistentType = 'persistent';
+
+  /// Written to the `type` column for reader pages of comics not on the shelf.
+  /// These slide their TTL by [temporaryDuration] on each hit.
+  static const String temporaryType = 'temporary';
+
   /// The compatibility singleton resolves paths once; owned instances can use
   /// independent directories and scanners without global test overrides.
   factory CacheManager() => instance ??= CacheManager.open(
@@ -114,21 +129,44 @@ class CacheManager {
     _limitSize = size * 1024 * 1024;
   }
 
-  /// Write cache to disk.
+  /// Write cache to disk with the default tier.
   Future<void> writeCache(
     String key,
     List<int> data, [
-    int duration = 7 * 24 * 60 * 60 * 1000,
+    int duration = defaultDuration,
   ]) {
-    final bytes = Uint8List.fromList(data);
-    return _enqueue(() => _writeCache(key, bytes, duration));
+    return _enqueue(() => _writeCache(key, Uint8List.fromList(data), duration, null));
   }
+
+  /// Write cache to disk with an explicit retention tier.
+  ///
+  /// Used by reader pages: [persistent] pages (bookshelf) never expire and
+  /// survive capacity cleanup; [temporary] pages slide a one-day TTL. [type]
+  /// is stored verbatim in the `type` column.
+  Future<void> writeCacheTyped(
+    String key,
+    List<int> data, {
+    required int duration,
+    String? type,
+  }) {
+    return _enqueue(
+      () => _writeCache(key, Uint8List.fromList(data), duration, type),
+    );
+  }
+
+  /// Resolve the sliding TTL for an existing entry from its tier.
+  int _slideDuration(String? type) => switch (type) {
+    persistentType => defaultDuration,
+    temporaryType => temporaryDuration,
+    _ => defaultDuration,
+  };
 
   Future<void> _writeCache(
     String key,
-    List<int> data, [
-    int duration = 7 * 24 * 60 * 60 * 1000,
-  ]) async {
+    List<int> data,
+    int duration,
+    String? type,
+  ) async {
     await _delete(key);
     _directoryIndex = (_directoryIndex + 1) % 100;
     final dir = _directoryIndex;
@@ -136,12 +174,16 @@ class CacheManager {
     var file = File('$_cachePath/$dir/$name');
     await file.create(recursive: true);
     await file.writeAsBytes(data);
-    var expires = DateTime.now().millisecondsSinceEpoch + duration;
+    // Persistent entries use a far-future expiry as a safety net; expiry is
+    // skipped for them in [_findCache] anyway.
+    final expires = type == persistentType
+        ? DateTime.now().millisecondsSinceEpoch + defaultDuration
+        : DateTime.now().millisecondsSinceEpoch + duration;
     _db.execute(
       '''
-      INSERT OR REPLACE INTO cache (key, dir, name, expires) VALUES (?, ?, ?, ?)
+      INSERT OR REPLACE INTO cache (key, dir, name, expires, type) VALUES (?, ?, ?, ?, ?)
     ''',
-      [key, dir.toString(), name, expires],
+      [key, dir.toString(), name, expires, type],
     );
     _currentSize += data.length;
     if (_currentSize > _limitSize) await _checkCache();
@@ -168,9 +210,10 @@ class CacheManager {
     var dir = row['dir'] as String;
     var name = row['name'] as String;
     var expires = row['expires'] as int;
+    final isPersistent = row['type'] == persistentType;
     var file = File('$_cachePath/$dir/$name');
     var now = DateTime.now().millisecondsSinceEpoch;
-    if (expires < now) {
+    if (!isPersistent && expires < now) {
       // expired
       _db.execute(
         '''
@@ -185,16 +228,18 @@ class CacheManager {
       return null;
     }
     if (await file.exists()) {
-      // update time
-      var expires = now + 7 * 24 * 60 * 60 * 1000;
-      _db.execute(
-        '''
-        UPDATE cache
-        SET expires = ?
-        WHERE key = ?
-      ''',
-        [expires, key],
-      );
+      if (!isPersistent) {
+        // Slide the TTL only for ordinary entries; bookshelf pages are stable.
+        var refreshed = now + _slideDuration(row['type'] as String?);
+        _db.execute(
+          '''
+          UPDATE cache
+          SET expires = ?
+          WHERE key = ?
+        ''',
+          [refreshed, key],
+        );
+      }
       return file;
     } else {
       _db.execute(
@@ -217,9 +262,9 @@ class CacheManager {
     var res = _db.select(
       '''
         SELECT * FROM cache
-        WHERE expires < ?
+        WHERE expires < ? AND (type IS NULL OR type != ?)
       ''',
-      [DateTime.now().millisecondsSinceEpoch],
+      [DateTime.now().millisecondsSinceEpoch, persistentType],
     );
     for (var row in res) {
       var dir = row['dir'] as String;
@@ -235,23 +280,25 @@ class CacheManager {
       _db.execute(
         '''
         DELETE FROM cache
-        WHERE expires < ?
+        WHERE expires < ? AND (type IS NULL OR type != ?)
       ''',
-        [DateTime.now().millisecondsSinceEpoch],
+        [DateTime.now().millisecondsSinceEpoch, persistentType],
       );
     }
 
     while (_currentSize > _limitSize) {
+      // Only evict non-persistent entries. Bookshelf pages stay on disk even
+      // when the ordinary cache is over budget.
       var res = _db.select('''
           SELECT * FROM cache
+          WHERE type IS NULL OR type != ?
           ORDER BY expires ASC
           limit 10
-        ''');
+        ''', [persistentType]);
       if (res.isEmpty) {
-        // There are many files unmanaged by the cache manager.
-        // Clear all cache.
-        await Directory(_cachePath).delete(recursive: true);
-        Directory(_cachePath).createSync(recursive: true);
+        // Nothing evictable. Do not wipe the directory: that would destroy
+        // persistent bookshelf pages. Over-budget non-persistent leftovers are
+        // harmless; a later write will retry eviction.
         break;
       }
       for (var row in res) {

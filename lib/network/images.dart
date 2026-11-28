@@ -36,12 +36,20 @@ typedef ComicImageLoader =
       String eid,
     );
 
+/// Returns true when [cid]/[sourceKey] is kept on the bookshelf, which makes
+/// its reader pages persistent (offline, no TTL). Injected at startup so the
+/// network layer does not depend on the favorites feature.
+typedef ComicImageRetentionResolver =
+    bool Function(String cid, String? sourceKey);
+
 abstract class ImageDownloader {
   static ThumbnailLoadingConfigResolver? _thumbnailLoadingConfigResolver;
 
   static ThumbnailCoverResolver? _thumbnailCoverResolver;
 
   static ComicImageLoadingConfigResolver? _comicImageLoadingConfigResolver;
+
+  static ComicImageRetentionResolver? _retentionResolver;
 
   static void configureSourceImageLoading({
     ThumbnailLoadingConfigResolver? thumbnailLoadingConfig,
@@ -52,6 +60,80 @@ abstract class ImageDownloader {
     _thumbnailCoverResolver = thumbnailCover;
     _comicImageLoadingConfigResolver = comicImageLoadingConfig;
   }
+
+  /// Decides whether reader pages are persistent (bookshelf) or temporary.
+  /// Set once at startup after the favorites store is ready; source reloads
+  /// never clear it.
+  static void configureImageRetention(ComicImageRetentionResolver? resolver) {
+    _retentionResolver = resolver;
+  }
+
+  /// Storage tier for a reader page. Shelf pages are persistent; everything
+  /// else is a temporary, one-day sliding cache.
+  static ({bool persistent, int duration, String type}) retentionFor(
+    String? sourceKey,
+    String cid,
+  ) {
+    final inShelf = cid.isNotEmpty && (_retentionResolver?.call(cid, sourceKey) ?? false);
+    return inShelf
+        ? (
+          persistent: true,
+          duration: CacheManager.defaultDuration,
+          type: CacheManager.persistentType,
+        )
+        : (
+          persistent: false,
+          duration: CacheManager.temporaryDuration,
+          type: CacheManager.temporaryType,
+        );
+  }
+
+  /// Query keys that change on every request but do not identify the image.
+  /// Only these are dropped when building a stable cache identity; identity
+  /// params such as `id`/`page`/`path` are preserved so two different pages
+  /// never collapse onto one key.
+  static const Set<String> _volatileQueryKeys = {
+    'token', 'access_token', 'accesstoken', 'sign', 'signature', 'sig',
+    'timestamp', 'time', 't', 'ts', '_t', 'expires', 'expire', 'exp',
+    'nonce', 'auth', 'authorization', 'hash', 'key', 'salt', 'v', 'ver',
+    'version', 'session', 'sid', 'stamp', 'random', 'rnd', 'noncestr',
+  };
+
+  /// Normalizes a source image URL into a token-free identity for disk caching.
+  ///
+  /// Many comic sources append a rotating `token`/`sign`/timestamp query to an
+  /// otherwise stable image path. Using the raw URL as the cache key makes the
+  /// disk cache miss on every reader re-entry. This drops only [volatile query
+  /// keys][_volatileQueryKeys] and the fragment, keeping every identity-bearing
+  /// parameter so distinct pages never collide. Callers that need query-
+  /// distinct URLs keep the legacy key because [stableCacheKey] is opt-in.
+  @visibleForTesting
+  static String normalizeImageIdentity(String imageKey) {
+    final hash = imageKey.indexOf('#');
+    var base = hash >= 0 ? imageKey.substring(0, hash) : imageKey;
+    final query = base.indexOf('?');
+    if (query < 0) return base;
+    final path = base.substring(0, query);
+    final kept = <String>[];
+    for (final part in base.substring(query + 1).split('&')) {
+      if (part.isEmpty) continue;
+      final eq = part.indexOf('=');
+      final name = eq < 0 ? part : part.substring(0, eq);
+      if (_volatileQueryKeys.contains(name.toLowerCase())) continue;
+      kept.add(part);
+    }
+    return kept.isEmpty ? path : '$path?${kept.join('&')}';
+  }
+
+  /// Stable cache key for a reader page, with the rotating token removed.
+  /// Shared with the export reader so it can find the same cached bytes.
+  static String readerCacheKey(
+    String imageKey,
+    String? sourceKey,
+    String cid,
+    String eid,
+  ) => 'reader@${normalizeImageIdentity(imageKey)}@$sourceKey@$cid@$eid';
+
 
   @visibleForTesting
   static bool debugShouldRetryImageLoad({
@@ -329,11 +411,21 @@ abstract class ImageDownloader {
     String imageKey,
     String? sourceKey,
     String cid,
-    String eid,
-  ) {
-    final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
+    String eid, {
+    bool stableCacheKey = false,
+  }) {
+    final cacheKey = stableCacheKey
+        ? readerCacheKey(imageKey, sourceKey, cid, eid)
+        : "$imageKey@$sourceKey@$cid@$eid";
     return _requests.open(
-      (scope) => _loadComicImage(imageKey, sourceKey, cid, eid, scope: scope),
+      (scope) => _loadComicImage(
+        imageKey,
+        sourceKey,
+        cid,
+        eid,
+        stableCacheKey: stableCacheKey,
+        scope: scope,
+      ),
       key: cacheKey,
     );
   }
@@ -354,11 +446,19 @@ abstract class ImageDownloader {
     String? sourceKey,
     String cid,
     String eid, {
+    bool stableCacheKey = false,
     RequestScope? scope,
   }) async* {
     scope?.check();
-    final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
-    final cache = await CacheManager().findCache(cacheKey);
+    final cacheKey = stableCacheKey
+        ? readerCacheKey(imageKey, sourceKey, cid, eid)
+        : "$imageKey@$sourceKey@$cid@$eid";
+    var cache = await CacheManager().findCache(cacheKey);
+    // Backward compatibility: pages cached by an older build used the raw URL
+    // key. Fall back to it once so upgrading does not re-download everything.
+    if (cache == null && stableCacheKey) {
+      cache = await CacheManager().findCache("$imageKey@$sourceKey@$cid@$eid");
+    }
 
     scope?.check();
     if (cache != null) {
@@ -453,7 +553,17 @@ abstract class ImageDownloader {
             }
 
             scope?.check();
-            await CacheManager().writeCache(cacheKey, data);
+            if (!stableCacheKey) {
+              await CacheManager().writeCache(cacheKey, data);
+            } else {
+              final retention = retentionFor(sourceKey, cid);
+              await CacheManager().writeCacheTyped(
+                cacheKey,
+                data,
+                duration: retention.duration,
+                type: retention.type,
+              );
+            }
             scope?.check();
             yield ImageDownloadProgress(
               currentBytes: data.length,

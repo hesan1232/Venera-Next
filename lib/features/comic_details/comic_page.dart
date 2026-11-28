@@ -21,6 +21,7 @@ import 'package:venera_next/features/comic_widgets/comic_widgets.dart';
 import 'package:venera_next/features/comic_details/action_button.dart';
 import 'package:venera_next/features/comic_details/actions.dart';
 import 'package:venera_next/features/comic_details/chapters.dart';
+import 'package:venera_next/features/comic_details/comic_details_cache.dart';
 import 'package:venera_next/features/comic_details/comments_preview.dart';
 import 'package:venera_next/features/comic_details/cover_viewer.dart';
 import 'package:venera_next/features/comic_details/thumbnails.dart';
@@ -178,8 +179,50 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     }
   }
 
+  /// Independent scope for the stale-while-revalidate refresh. It must outlive
+  /// the loading scope that returned the cached entry.
+  RequestScope? _bgScope;
+
+  /// Force a fresh load, bypassing and clearing the cached details/chapters.
+  @override
+  Future<void> forceRefreshDetails() async {
+    await ComicDetailsCache.instance.invalidate(widget.sourceKey, widget.id);
+    _bgScope?.cancel();
+    retry();
+  }
+
+  /// Refresh details in the background after showing a cached entry. A failure
+  /// is silently ignored so stale data stays usable; success swaps in the new
+  /// model only while this page is still showing it.
+  void _refreshInBackground(String sourceKey, String id) {
+    _bgScope?.cancel();
+    _bgScope?.dispose();
+    final scope = _bgScope = RequestScope();
+    final source = ComicSource.find(sourceKey);
+    if (source == null || source.loadComicInfo == null) return;
+    unawaited(
+      scope.run(() async {
+        final result = await source.loadComicInfo!(id);
+        scope.check();
+        if (!result.success) return;
+        final fresh = result.data;
+        unawaited(ComicDetailsCache.instance.write(sourceKey, id, fresh));
+        // Only swap while this page still shows the same comic; a navigation
+        // or forced refresh may have replaced it in the meantime.
+        if (!mounted || widget.sourceKey != sourceKey || widget.id != id) {
+          return;
+        }
+        setState(() => data = fresh);
+      }).catchError((Object error, StackTrace stack) {
+        // A background refresh is best-effort; the cached entry remains valid.
+      }),
+    );
+  }
+
   @override
   void dispose() {
+    _bgScope?.cancel();
+    _bgScope?.dispose();
     scrollController.removeListener(onScroll);
     scrollController.dispose();
     super.dispose();
@@ -305,7 +348,31 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     history = HistoryScope.read(
       context,
     ).find(widget.id, ComicType(widget.sourceKey.hashCode));
-    return comicSource.loadComicInfo!(widget.id);
+
+    // Stale-while-revalidate: show the last known details/chapters immediately
+    // so the reader is tappable without waiting on the network, then refresh in
+    // the background. Progress comes from the local history above, not the
+    // network, so it is already accurate when the cached page is displayed.
+    final cached = await ComicDetailsCache.instance.read(
+      widget.sourceKey,
+      widget.id,
+    );
+    if (cached != null && !scope.isCancelled) {
+      _refreshInBackground(widget.sourceKey, widget.id);
+      return Res(cached);
+    }
+
+    final result = await comicSource.loadComicInfo!(widget.id);
+    if (result.success) {
+      unawaited(
+        ComicDetailsCache.instance.write(
+          widget.sourceKey,
+          widget.id,
+          result.data,
+        ),
+      );
+    }
+    return result;
   }
 
   @override

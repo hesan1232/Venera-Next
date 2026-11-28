@@ -28,6 +28,15 @@ void main() {
     },
   );
 
+  test('aggregated search mode survives a settings round trip', () {
+    expect(DiscoveryPreferences.aggregatedSearch.normalize(null), isFalse);
+    expect(DiscoveryPreferences.aggregatedSearch.normalize(true), isTrue);
+    expect(
+      DiscoveryPreferences.all.contains(DiscoveryPreferences.aggregatedSearch),
+      isTrue,
+    );
+  });
+
   test(
     'startup page accepts legacy integers and parseable strings in range',
     () {

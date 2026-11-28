@@ -71,14 +71,15 @@ class ReaderImageProvider extends BaseImageProvider<ReaderImageProvider> {
       );
     }
     Uint8List? imageBytes;
+    final isLocalFile = imageKey.startsWith('file://');
     final readDiagnostic = diagnostics?.beginImageSpan(
       hashCode,
-      imageKey.startsWith('file://')
+      isLocalFile
           ? ReaderDiagnosticStage.localRead
           : ReaderDiagnosticStage.sourceRead,
     );
     try {
-      if (imageKey.startsWith('file://')) {
+      if (isLocalFile) {
         final file = createLocalFile(imageKey.substring(7));
         final exists = await file.exists();
         checkStop();
@@ -95,7 +96,13 @@ class ReaderImageProvider extends BaseImageProvider<ReaderImageProvider> {
         }
       } else {
         imageBytes = await readImageStream(
-          ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid),
+          ImageDownloader.loadComicImage(
+            imageKey,
+            sourceKey,
+            cid,
+            eid,
+            stableCacheKey: true,
+          ),
           cancelSignal: BaseImageProvider.cancelSignalOf(checkStop),
           checkStop: checkStop,
           onProgress: (event) => chunkEvents.add(

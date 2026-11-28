@@ -28,6 +28,7 @@
 
 - [1. Introduction](#introduction)
 - [2. Highlights](#highlights)
+  - [2.5 Custom features in this fork](#custom-features-in-this-fork)
 - [3. Download and installation](#download-and-installation)
   - [3.1 Android phones and tablets](#android-phones-and-tablets)
   - [3.2 Android TV](#android-tv)
@@ -36,8 +37,11 @@
   - [3.5 Linux](#linux)
   - [3.6 iOS](#ios)
   - [3.7 macOS](#macos)
+  - [3.8 Builds from this fork](#builds-from-this-fork)
 - [4. Quick start](#quick-start)
 - [5. Usage guide](#usage-guide)
+  - [5.3 Nighttime and E-Ink reading](#nighttime-and-e-ink-reading)
+  - [5.5 Local comics and offline downloads](#local-comics-and-offline-downloads)
 - [6. Developing comic sources](#developing-comic-sources)
 - [7. FAQ](#faq)
 - [8. Developer resources](#developer-resources)
@@ -59,14 +63,20 @@ This fork focuses on fewer interruptions and more reading: Waterfall mode scroll
 
 Venera's JavaScript extensions, local reading, search and categories, favorites, downloads, and source-dependent login, comments, and ratings remain available.
 
+> [!NOTE]
+> **About this repository**: this is a local customization fork of [`CyrilPeng/Venera-Next`](https://github.com/CyrilPeng/Venera-Next) based on `v1.18.4+253`, hosted at <https://github.com/hesan1232/Venera-Next>. On top of upstream it adds Web service / OPDS enhancements, cross-chapter preloading, and mirror-site speed testing. See [2.5 Custom features in this fork](#custom-features-in-this-fork). Upstream releases can still be merged through `origin`; the rest of this document matches upstream.
+
 **Quick links:** [Install](#download-and-installation) · [Usage](#usage-guide) · [Write a source](doc/api/comic_source.en.md) · [JavaScript API](doc/api/js.en.md) · [Changelog](CHANGELOG.md)
 
 > [!IMPORTANT]
 > This repository maintains the reader and extension runtime. It does not provide, bundle, host, or recommend comic sources. Users must configure legal extensions themselves; content and availability depend on the corresponding extension and service.
 
 <div align="center">
+  <a href="https://github.com/hesan1232/Venera-Next">
+    <img alt="This fork" src="https://img.shields.io/badge/GitHub-This_fork-181717?style=for-the-badge&logo=github&logoColor=white" />
+  </a>
   <a href="https://github.com/CyrilPeng/Venera-Next">
-    <img alt="GitHub main repository" src="https://img.shields.io/badge/GitHub-Main_repository-181717?style=for-the-badge&logo=github&logoColor=white" />
+    <img alt="Upstream project" src="https://img.shields.io/badge/GitHub-Upstream-181717?style=for-the-badge&logo=github&logoColor=white" />
   </a>
   <a href="https://gitee.com/CyrilPeng/venera-next">
     <img alt="Gitee China mirror" src="https://img.shields.io/badge/Gitee-China_mirror-C71D23?style=for-the-badge&logo=gitee&logoColor=white" />
@@ -121,6 +131,17 @@ A fresh install creates this folder automatically (named "追更" by default). T
 - **Favorites and offline access:** local and network favorites, history, saved images, and a download queue; read downloaded chapters offline.
 - **Source-dependent interaction:** accounts, cookies, comments and replies, likes, and ratings where implemented by the extension.
 - **Multiple devices:** WebDAV app-data synchronization, import/export, and [headless commands](doc/user/headless.en.md) for scripting.
+
+<a id="custom-features-in-this-fork"></a>
+### 2.5 Custom features in this fork
+
+These features are added on top of `v1.18.4` in this fork and are not part of upstream:
+
+- **Tiered image cache**: pages of shelved comics use a persistent cache (never expires, excluded from eviction), while unshelved browsing uses a temporary cache with a 1-day sliding TTL.
+- **Web service and OPDS**: Komga-style UI and API with Library → Series → Book → Page paths, Spring-style pagination, cover and reading-progress semantics, and OPDS 1.2. Search history, result caching, cover fallbacks, and scroll restoration are included; enabling the web service can request battery-optimization exemption.
+- **Cross-chapter preloading**: Waterfall warms up the next chapter near the end of a chapter, Gallery does the same for adjacent chapters, and tapping to advance at a chapter end now enters the next chapter.
+
+Design notes, algorithm comparisons, benchmarks, and out-of-scope items are in [`Venera-Next-墨水屏优化设计方案.md`](Venera-Next-墨水屏优化设计方案.md) at the repository root.
 
 ---
 
@@ -210,6 +231,20 @@ Download the IPA from the [latest stable release](https://github.com/CyrilPeng/V
 
 Download `VeneraNext-xxx.dmg` from the [latest stable release](https://github.com/CyrilPeng/Venera-Next/releases/latest).
 
+<a id="builds-from-this-fork"></a>
+### 3.8 Builds from this fork
+
+The [custom features in this fork](#custom-features-in-this-fork) are not in the upstream releases, so build from source. For an Android arm64 Release:
+
+```bash
+cd Venera-Next
+flutter build apk --release --flavor mobile --target-platform android-arm64 --no-pub
+```
+
+The deliverable is `build/app/outputs/flutter-apk/app-mobile-release.apk` (single-ABI build with the Rust native libraries). Do not distribute `app-arm64-v8a-*`, which are split-package stubs.
+
+On Windows, point `GRADLE_USER_HOME` and `TEMP/TMP` at a drive with enough free space so Gradle/CMake intermediates do not fill the system drive, and make sure no `java` / `dart` processes are still running before building; otherwise concurrent builds can fight over the same directory and raise `AccessDeniedException`. See [Build and Development](doc/development/build.en.md).
+
 ---
 
 <a id="quick-start"></a>
@@ -252,7 +287,7 @@ Download `VeneraNext-xxx.dmg` from the [latest stable release](https://github.co
 ### 5.3 Nighttime and E-Ink reading
 
 - **Night dimming:** turn it on inside the reader (reader settings or the bottom quick panel) and dim from 20% to 100%; it affects only the in-app image. Choose the app's light/dark/system theme in Settings → Appearance.
-- **E-Ink:** enable E-Ink refresh in Gallery mode and choose a flash every 1–10 page turns, a duration of 100–1500 ms, and a black, white, or white-then-black style. Continuous and Waterfall do not trigger it.
+- **E-Ink flash (upstream):** enable E-Ink refresh in Gallery mode and choose a flash every 1–10 page turns, a duration of 100–1500 ms, and a black, white, or white-then-black style. Continuous and Waterfall do not trigger it.
 
 <a id="favorites-read-later-and-update-tracking"></a>
 ### 5.4 Favorites, Read Later, and update tracking
@@ -278,6 +313,12 @@ Download `VeneraNext-xxx.dmg` from the [latest stable release](https://github.co
 | Source downloads | Store downloaded chapters in the local library for offline reading, later export, and archival |
 
 CBZ export, scanning to recover downloads, chapter deletion, and storage migration are available. PDF/EPUB imports consume additional storage; text-only EPUB, directly drawn SVG pages, encrypted PDF, and MOBI/AZW/AZW3 are not supported. See [local import, CBZ, and WebDAV library rules](doc/user/import_comic.en.md) for folder examples, archive compatibility, and metadata templates.
+
+**Caching in this fork:**
+
+- Pages of shelved comics use a persistent cache (never expires, excluded from eviction), so reopening a chapter reads from cache instead of refetching.
+- Unshelved browsing writes only to a temporary cache with a **1-day sliding TTL** and participates in eviction, so casual browsing never pollutes the local library.
+- The library can be relocated into a directory that already contains other files; relocation is refused only when a comic with the same name already exists, to avoid merging two libraries. Import and export backups are unaffected.
 
 <a id="network-comic-extensions"></a>
 ### 5.6 Network comic extensions
