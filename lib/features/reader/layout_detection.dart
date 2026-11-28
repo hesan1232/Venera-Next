@@ -19,6 +19,20 @@ class ComicLayoutProbeFailure implements Exception {
       'Layout probe failed: ${failures.map((failure) => '${failure.stage}: ${failure.error}').join('; ')}';
 }
 
+/// Reader layout probes share the token-free stable cache with rendered pages.
+Stream<ImageDownloadProgress> _stableLayoutImage(
+  String key,
+  String? sourceKey,
+  String cid,
+  String eid,
+) => ImageDownloader.loadComicImage(
+  key,
+  sourceKey,
+  cid,
+  eid,
+  stableCacheKey: true,
+);
+
 /// Samples encoded dimensions with a bounded UI wait and a separate lifetime.
 /// Downloads use the shared reader cache, but cancellation releases only this
 /// probe's subscriptions. [done] also joins work still pending after timeout.
@@ -28,7 +42,7 @@ class ComicLayoutProbe {
     loader,
     Future<ui.ImmutableBuffer> Function(Uint8List)? createBuffer,
     Future<ui.ImageDescriptor> Function(ui.ImmutableBuffer)? createDescriptor,
-  }) : _loader = loader ?? ImageDownloader.loadComicImage,
+  }) : _loader = loader ?? _stableLayoutImage,
        _createBuffer = createBuffer ?? ui.ImmutableBuffer.fromUint8List,
        _createDescriptor = createDescriptor ?? ui.ImageDescriptor.encoded {
     // A caller may first await the UI result. Keep a late cleanup failure

@@ -96,6 +96,7 @@ void main() {
               lastChapter: false,
               maxChapter: 2,
               preloadCount: 0,
+              preloadChapters: 0,
               splitWideImages: false,
               invertSplit: false,
               scrollSpeed: 1,

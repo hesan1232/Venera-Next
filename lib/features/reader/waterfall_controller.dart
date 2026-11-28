@@ -116,6 +116,7 @@ class WaterfallController {
   Future<void> ensureAfter({
     required int current,
     required int threshold,
+    int ahead = 1,
   }) async {
     if (_disposed || _navigating || _loadingAfter || _afterError != null) {
       return;
@@ -130,13 +131,20 @@ class WaterfallController {
     }
     _loadingAfter = true;
     onChanged();
+    final baseChapter = _flow.lastChapter!;
+    final chaptersToFetch = ahead < 1 ? 1 : ahead;
     try {
+      // `ahead` is a floor, not a cap: fetch at least that many chapters, then
+      // keep filling while the image threshold is still unmet. Chapters that
+      // come back empty must not swallow the configured look-ahead.
       while (_current(scope) &&
-          _flow.shouldLoadAfter(
-            current: current,
-            threshold: threshold,
-            maxChapter: maxChapter,
-          )) {
+          _flow.lastChapter! < maxChapter &&
+          (_flow.lastChapter! < baseChapter + chaptersToFetch ||
+              _flow.shouldLoadAfter(
+                current: current,
+                threshold: threshold,
+                maxChapter: maxChapter,
+              ))) {
         final segment = await _load(_flow.lastChapter! + 1, scope);
         if (!_current(scope)) return;
         _flow.addAfter(segment);

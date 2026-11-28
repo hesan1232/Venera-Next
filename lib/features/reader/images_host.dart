@@ -139,7 +139,8 @@ class ReaderImagesHost extends StatelessWidget {
           commentsAtEnd: reader.totalPages > reader.maxPage,
           firstChapter: reader.isFirstChapterOfGroup,
           lastChapter: reader.isLastChapterOfGroup,
-          preloadCount: appdata.settings.globalReaderSettings.preloadImageCount,
+          preloadCount: reader.preferences.preloadImageCount,
+          preloadChapters: reader.preferences.preloadChapters,
           decodePixelBudget: appdata.settings.tvLowMemoryEnabled
               ? TvReaderPolicy.decodePixels
               : null,
@@ -178,6 +179,9 @@ class ReaderImagesHost extends StatelessWidget {
                 work: reader.imageWork,
                 onExit: reader.requestExit,
               ),
+        loadChapter: chapters.load,
+        chapterIdOf: chapters.chapterId,
+        maxChapter: reader.maxChapter,
       );
     } else {
       final preferences = reader.preferences;
@@ -191,7 +195,8 @@ class ReaderImagesHost extends StatelessWidget {
           firstChapter: reader.isFirstChapterOfGroup,
           lastChapter: reader.isLastChapterOfGroup,
           maxChapter: reader.maxChapter,
-          preloadCount: appdata.settings.globalReaderSettings.preloadImageCount,
+          preloadCount: reader.preferences.preloadImageCount,
+          preloadChapters: reader.preferences.preloadChapters,
           decodePixelBudget: appdata.settings.tvLowMemoryEnabled
               ? TvReaderPolicy.decodePixels
               : null,

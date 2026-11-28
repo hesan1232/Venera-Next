@@ -146,6 +146,14 @@ abstract final class ReaderPreferences {
     step: 1,
     integer: true,
   );
+  static const preloadChapters = NumericPreference(
+    'preloadChapters',
+    1,
+    min: 0,
+    max: 5,
+    step: 1,
+    integer: true,
+  );
   static const autoReadingAcrossChapters = BoolPreference(
     'autoReadingAcrossChapters',
     true,
@@ -252,6 +260,7 @@ abstract final class ReaderPreferences {
     eInkRefreshDuration,
     eInkRefreshInterval,
     preloadImageCount,
+    preloadChapters,
     autoReadingAcrossChapters,
     autoReadingKeepScreenOn,
     autoReadingSkipUnavailableImages,

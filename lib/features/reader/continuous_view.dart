@@ -15,6 +15,7 @@ import 'package:venera_next/features/reader/image_position.dart';
 import 'package:venera_next/features/reader/comic_image.dart';
 import 'package:venera_next/features/reader/auto_reading.dart';
 import 'package:venera_next/features/reader/waterfall_flow.dart';
+import 'package:venera_next/features/reader/chapter_precache.dart';
 import 'package:venera_next/foundation/context.dart';
 import 'package:venera_next/foundation/image_provider/reader_image.dart';
 import 'package:venera_next/foundation/translations.dart';
@@ -87,6 +88,7 @@ class ContinuousModeState extends State<ReaderContinuousView>
         AutoReadingViewport,
         AutoReadingImageViewport {
   late var _imageDownloads = ReaderImageDownloads(work: widget.imageWork);
+  late var _chapterPrecache = ReaderChapterPrecache(work: widget.imageWork);
   late var _whiteBorderCrop = ReaderWhiteBorderCrop(widget.imageWork);
 
   @override
@@ -233,6 +235,7 @@ class ContinuousModeState extends State<ReaderContinuousView>
     await _waterfall.ensureAfter(
       current: current,
       threshold: math.max(preCacheCount, 1),
+      ahead: data.preloadChapters,
     );
   }
 
@@ -466,6 +469,8 @@ class ContinuousModeState extends State<ReaderContinuousView>
         oldWidget.data.crossChapter != data.crossChapter) {
       unawaited(_imageDownloads.dispose());
       _imageDownloads = ReaderImageDownloads(work: widget.imageWork);
+      unawaited(_chapterPrecache.dispose());
+      _chapterPrecache = ReaderChapterPrecache(work: widget.imageWork);
       unawaited(_waterfall.dispose());
       _waterfall = _createWaterfall();
       _scrollController?.resetLayoutAnchor();
@@ -497,6 +502,7 @@ class ContinuousModeState extends State<ReaderContinuousView>
     _releaseWaterfallLoading?.call(notify: false);
     unawaited(_waterfall.dispose());
     unawaited(_imageDownloads.dispose());
+    unawaited(_chapterPrecache.dispose());
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
     unawaited(_photoPositionSubscription?.cancel());
     photoViewController.dispose();
@@ -856,8 +862,33 @@ class ContinuousModeState extends State<ReaderContinuousView>
     );
   }
 
+  /// Warms the next chapter(s) for the horizontally paged-and-scrolled modes.
+  ///
+  /// The waterfall already appends real segments through
+  /// [WaterfallController.ensureAfter], so it must not fetch the same chapter
+  /// twice. Every other continuous mode reloads content on a chapter turn,
+  /// which is where the source call used to be paid in full.
+  void _warmUpcomingChapters() {
+    if (crossChapter || _disposed) return;
+    final count = data.preloadChapters;
+    if (count <= 0 || currentChapter >= data.maxChapter) return;
+    _chapterPrecache.warm(
+      currentChapter: currentChapter,
+      maxChapter: data.maxChapter,
+      ahead: count,
+      imageCount: preCacheCount > 0 ? preCacheCount : 1,
+      loadChapter: widget.loadChapter,
+      chapterIdOf: widget.chapterId,
+      onImage: (key, chapterId) {
+        if (_disposed || !mounted || key.startsWith('file://')) return;
+        _imageDownloads.preload(key, data.sourceKey, data.comicId, chapterId);
+      },
+    );
+  }
+
   void cacheImages(int current) {
     if (!mounted) return;
+    _warmUpcomingChapters();
     for (int i = current + 1; i <= current + preCacheCount; i++) {
       if (crossChapter) {
         var imageRef = _imageRefAt(i);

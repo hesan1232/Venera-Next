@@ -145,6 +145,24 @@ class ReaderState extends State<Reader>
   late final imageFavorites = HistoryScope.readImages(context);
   final _targetValidity = ValueNotifier(0);
   final _shellChanges = ValueNotifier(0);
+  /// Chapter image lists resolved by this session, shared by cross-chapter
+  /// prefetch and the real page turn so a warmed chapter needs no source call.
+  ///
+  /// The lists are tied to the source object that produced them: a replaced or
+  /// updated source must be asked again instead of replaying stale image URLs.
+  final _chapterImagesCache = <String, List<String>>{};
+  Object? _chapterImagesCacheSource;
+
+  /// Keep the session cache small; chapters beyond this are re-resolved from
+  /// the source, which is cheap compared to growing without bound.
+  static const _chapterImagesCacheLimit = 8;
+
+  void _bindChapterImagesCache(Object? source) {
+    if (identical(_chapterImagesCacheSource, source)) return;
+    _chapterImagesCacheSource = source;
+    _chapterImagesCache.clear();
+  }
+
   ReaderImageViewController? _publishedViewport;
   bool _viewportPublicationPending = false;
   int _diagnosticsRequest = 0;
@@ -367,8 +385,20 @@ class ReaderState extends State<Reader>
         preferences.longPressAction == settings.longPressAction;
     bool current() => targetCurrent() && (route?.isCurrent ?? true);
     void turn(bool forward) {
-      if (current() && viewport != null && !content.isLoading) {
-        toPage(imagePage + (forward ? 1 : -1));
+      if (!current() || viewport == null || content.isLoading) return;
+      final target = imagePage + (forward ? 1 : -1);
+      // Taps used to stop dead at the chapter edge while a swipe crossed into
+      // the next chapter (PageView's sentinel page). Keep both gestures equal
+      // by falling back to chapter navigation once the page target leaves the
+      // current chapter.
+      if (target >= 1 && target <= totalPages) {
+        toPage(target);
+        return;
+      }
+      if (forward) {
+        if (!isLastChapterOfGroup) toNextChapter();
+      } else if (!isFirstChapterOfGroup) {
+        toPrevChapter(toLastPage: true);
       }
     }
 
@@ -818,16 +848,34 @@ class ReaderState extends State<Reader>
           !_session.isHeld &&
           (route?.isCurrent ?? true) &&
           listEquals(chapters?.titles.toList(growable: false), titles),
-      load: (chapter, snapshot, scope) => loadReaderChapterImages(
-        comicId: comic,
-        type: comicType,
-        chapter: chapter,
-        chapters: snapshot,
-        scope: scope,
-        onOnlineFallback: () {
-          if (current()) onLocalChapterRecoveredOnline();
-        },
-      ),
+      load: (chapter, snapshot, scope) async {
+        _bindChapterImagesCache(
+          comicType == ComicType.local
+              ? null
+              : ComicSource.find(comicType.sourceKey),
+        );
+        final cacheKey =
+            snapshot?.ids.elementAtOrNull(chapter - 1) ?? '$chapter';
+        final cached = _chapterImagesCache[cacheKey];
+        if (cached != null) return cached;
+        final images = await loadReaderChapterImages(
+          comicId: comic,
+          type: comicType,
+          chapter: chapter,
+          chapters: snapshot,
+          scope: scope,
+          onOnlineFallback: () {
+            if (current()) onLocalChapterRecoveredOnline();
+          },
+        );
+        if (current() && images.isNotEmpty) {
+          _chapterImagesCache[cacheKey] = images;
+          while (_chapterImagesCache.length > _chapterImagesCacheLimit) {
+            _chapterImagesCache.remove(_chapterImagesCache.keys.first);
+          }
+        }
+        return images;
+      },
     );
   }
 

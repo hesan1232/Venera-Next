@@ -697,6 +697,14 @@ class _ReaderSettingsState extends SettingsSaveState<ReaderSettings> {
             comicSource: isEnabledSpecificSettings ? widget.comicSource : null,
             useDeviceSettings: useDeviceSpecificSettings,
           ).toSliver(),
+          SliderSetting.reader(
+            title: "Chapters to preload ahead (0 = off)".tl,
+            preference: ReaderPreferences.preloadChapters,
+            onChanged: () => widget.onChanged?.call('preloadChapters'),
+            comicId: isEnabledSpecificSettings ? widget.comicId : null,
+            comicSource: isEnabledSpecificSettings ? widget.comicSource : null,
+            useDeviceSettings: useDeviceSpecificSettings,
+          ).toSliver(),
           SwitchSetting.reader(
             title: "Show Page Number".tl,
             preference: ReaderPreferences.showPageNumberInReader,

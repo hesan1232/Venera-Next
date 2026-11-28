@@ -60,6 +60,7 @@ class ReaderSettings {
       values['readerScreenPicNumberForLandscape'] = 1;
       values['readerScreenPicNumberForPortrait'] = 1;
       values['preloadImageCount'] = 1;
+      values['preloadChapters'] = 0;
     }
     return ReaderSettings._(values);
   }
@@ -105,6 +106,7 @@ class ReaderSettings {
   int get eInkRefreshDuration => _values['eInkRefreshDuration'] as int;
   int get eInkRefreshInterval => _values['eInkRefreshInterval'] as int;
   int get preloadImageCount => _values['preloadImageCount'] as int;
+  int get preloadChapters => _values['preloadChapters'] as int;
   bool get autoReaderMode => _values['autoReaderMode'] as bool;
   bool get autoReadingAcrossChapters =>
       _values['autoReadingAcrossChapters'] as bool;

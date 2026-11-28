@@ -13,6 +13,7 @@ class ReaderGalleryData {
     required this.firstChapter,
     required this.lastChapter,
     required this.preloadCount,
+    this.preloadChapters = 0,
     required this.doubleTapCollect,
     required this.centerLongPressZoom,
     required this.pageAnimation,
@@ -32,6 +33,10 @@ class ReaderGalleryData {
   final bool firstChapter;
   final bool lastChapter;
   final int preloadCount;
+
+  /// Number of following chapters whose first images are warmed in advance.
+  /// Zero disables cross-chapter prefetch.
+  final int preloadChapters;
   final bool doubleTapCollect;
   final bool centerLongPressZoom;
   final bool pageAnimation;

@@ -13,6 +13,32 @@ import 'image_dimensions.dart';
 import 'auto_reading.dart';
 import 'white_border_crop.dart';
 
+/// Chooses the resampling filter from the scale direction.
+///
+/// Flutter's [FilterQuality.medium] is bilinear sampling over a mipmap chain.
+/// The mipmaps are what make it correct for **downscaling**: they prefilter the
+/// source so thin strokes do not alias, which [FilterQuality.high] (bicubic)
+/// cannot do — it samples a 4x4 neighbourhood and rings badly at large
+/// reduction ratios. Callers pass `medium` for that reason.
+///
+/// Upscaling is the opposite case: there is nothing to prefilter, and bicubic
+/// keeps line art noticeably sharper than bilinear. Low-resolution scans are
+/// common (an 800 px page on a 1860 px panel), so only that direction is
+/// upgraded. The 5% band avoids flipping the filter on sub-pixel layout noise.
+FilterQuality _resolveFilterQuality(
+  FilterQuality requested,
+  double sourceWidth,
+  double? layoutWidth,
+) {
+  if (requested != FilterQuality.medium) return requested;
+  if (layoutWidth == null || !layoutWidth.isFinite || sourceWidth <= 0) {
+    return requested;
+  }
+  return layoutWidth > sourceWidth * 1.05
+      ? FilterQuality.high
+      : FilterQuality.medium;
+}
+
 class ComicImage extends StatefulWidget {
   /// Modified from flutter Image
   ComicImage({
@@ -556,6 +582,18 @@ class ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
               widget.splitWideImage && shouldSplitWideImage(imageSize);
           // build image
           final sourceRect = _sourceRect(imageSize);
+          // Bilinear + mipmaps is the correct filter when the page is being
+          // *reduced*: the mipmap chain prefilters the source, which keeps thin
+          // line art from aliasing. Bicubic samples only a 4x4 neighbourhood and
+          // aliases badly at large reduction ratios, so forcing it here would
+          // make downscaled pages worse. Upscaling is the opposite case — there
+          // is nothing to prefilter and cubic keeps strokes visibly sharper —
+          // so the filter is chosen from the direction, not globally.
+          final filterQuality = _resolveFilterQuality(
+            widget.filterQuality,
+            imageSize.width,
+            width,
+          );
           Widget result = shouldSplit || sourceRect != Offset.zero & imageSize
               ? _SplitWideImage(
                   image: _imageInfo!.image,
@@ -572,7 +610,7 @@ class ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
                   matchTextDirection: widget.matchTextDirection,
                   invertColors: _invertColors,
                   isAntiAlias: widget.isAntiAlias,
-                  filterQuality: widget.filterQuality,
+                  filterQuality: filterQuality,
                   splitInvert: widget.splitWideImageInvert,
                 )
               : RawImage(
@@ -595,7 +633,7 @@ class ComicImageState extends State<ComicImage> with WidgetsBindingObserver {
                   matchTextDirection: widget.matchTextDirection,
                   invertColors: _invertColors,
                   isAntiAlias: widget.isAntiAlias,
-                  filterQuality: widget.filterQuality,
+                  filterQuality: filterQuality,
                 );
 
           if (!widget.excludeFromSemantics) {

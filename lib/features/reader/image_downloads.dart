@@ -9,6 +9,21 @@ import 'package:venera_next/network/request_scope.dart';
 
 import 'package:venera_next/foundation/image_work.dart';
 
+/// Reader preloads share the token-free stable cache with rendered pages, so a
+/// token rotation never forces a second download.
+Stream<ImageDownloadProgress> _stablePreloadImage(
+  String key,
+  String? sourceKey,
+  String cid,
+  String eid,
+) => ImageDownloader.loadComicImage(
+  key,
+  sourceKey,
+  cid,
+  eid,
+  stableCacheKey: true,
+);
+
 /// A view owns its subscriptions; the reading session owns their actual finish.
 class ReaderImageDownloads {
   ReaderImageDownloads({
@@ -16,7 +31,7 @@ class ReaderImageDownloads {
     Stream<ImageDownloadProgress> Function(String, String?, String, String)?
     loader,
   }) : _work = work,
-       _loader = loader ?? ImageDownloader.loadComicImage;
+       _loader = loader ?? _stablePreloadImage;
 
   final ImageWork _work;
   final Stream<ImageDownloadProgress> Function(String, String?, String, String)

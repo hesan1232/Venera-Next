@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:venera_next/components/loading.dart';
+import 'package:venera_next/features/reader/chapter_precache.dart';
 import 'package:venera_next/features/reader/image_downloads.dart';
 import 'package:venera_next/features/reader/image_precache.dart';
 import 'package:venera_next/foundation/image_work.dart';
+import 'package:venera_next/network/request_scope.dart';
 import 'package:venera_next/foundation/reader_diagnostics.dart';
 import 'package:venera_next/features/reader/comic_image.dart';
 import 'package:venera_next/features/reader/auto_reading.dart';
@@ -34,6 +36,9 @@ class ReaderGalleryView extends StatefulWidget {
     required this.readerSize,
     required this.readImage,
     this.commentsBuilder,
+    this.loadChapter,
+    this.chapterIdOf,
+    this.maxChapter = 1,
   });
 
   final ReaderGalleryData data;
@@ -49,6 +54,13 @@ class ReaderGalleryView extends StatefulWidget {
   final Future<Uint8List?> Function(ReaderImageAddress image) readImage;
   final WidgetBuilder? commentsBuilder;
 
+  /// Optional cross-chapter inputs. Direct widget users (tests, previews) can
+  /// omit them; the reader shell supplies the live chapter request.
+  final Future<List<String>> Function(int chapter, RequestScope scope)?
+  loadChapter;
+  final String Function(int chapter)? chapterIdOf;
+  final int maxChapter;
+
   @override
   State<ReaderGalleryView> createState() => GalleryModeState();
 }
@@ -63,6 +75,7 @@ class GalleryModeState extends State<ReaderGalleryView>
     work: widget.imageWork,
     maximumConcurrent: 2,
   );
+  late var _chapterPrecache = ReaderChapterPrecache(work: widget.imageWork);
   VoidCallback? _removePrecacheResumeListener;
   Object? _lastPrecache;
   ImageConfiguration? _precacheConfiguration;
@@ -77,6 +90,8 @@ class GalleryModeState extends State<ReaderGalleryView>
     _removePrecacheResumeListener?.call();
     _removePrecacheResumeListener = widget.imageWork.addResumeListener(() {
       _lastPrecache = null;
+      unawaited(_chapterPrecache.dispose());
+      _chapterPrecache = ReaderChapterPrecache(work: widget.imageWork);
       if (mounted && !_disposed) _schedulePrecache(page);
     });
   }
@@ -94,12 +109,18 @@ class GalleryModeState extends State<ReaderGalleryView>
 
   // Preserve the legacy gallery contract: image processing receives the current
   // display page, including for prefetch, rather than the source image index.
-  ReaderImageProvider _imageProvider(String key) => ReaderImageProvider(
+  // Cross-chapter warming passes the target chapter and its first page so the
+  // provider matches the one the next chapter's view will resolve.
+  ReaderImageProvider _imageProvider(
+    String key, {
+    String? chapterId,
+    int? providerPage,
+  }) => ReaderImageProvider(
     key,
     data.sourceKey,
     data.comicId,
-    data.chapterId,
-    page,
+    chapterId ?? data.chapterId,
+    providerPage ?? page,
     diagnostics: widget.imageWork.diagnostics,
     decodePixelBudget: data.decodePixelBudget,
   );
@@ -155,11 +176,13 @@ class GalleryModeState extends State<ReaderGalleryView>
       _bindPrecacheResume();
       unawaited(_imageDownloads.dispose());
       unawaited(_imagePrecache.dispose());
+      unawaited(_chapterPrecache.dispose());
       _imageDownloads = ReaderImageDownloads(work: widget.imageWork);
       _imagePrecache = ReaderImagePrecache(
         work: widget.imageWork,
         maximumConcurrent: 2,
       );
+      _chapterPrecache = ReaderChapterPrecache(work: widget.imageWork);
       _lastPrecache = null;
     }
     if (oldWidget.onViewportChanged != widget.onViewportChanged) {
@@ -181,6 +204,7 @@ class GalleryModeState extends State<ReaderGalleryView>
     _activePage.dispose();
     unawaited(_imagePrecache.dispose());
     unawaited(_imageDownloads.dispose());
+    unawaited(_chapterPrecache.dispose());
     super.dispose();
   }
 
@@ -252,6 +276,34 @@ class GalleryModeState extends State<ReaderGalleryView>
     }
     var (startIndex, endIndex) = getPageImagesRange(page);
     return (startIndex, endIndex);
+  }
+
+  void _warmUpcomingChapters(ImageConfiguration configuration) {
+    final loadChapter = widget.loadChapter;
+    if (_disposed || !mounted || loadChapter == null) return;
+    final current = navigation.state.chapter;
+    final count = data.preloadChapters;
+    if (count <= 0 || current >= widget.maxChapter) return;
+    _chapterPrecache.warm(
+      currentChapter: current,
+      maxChapter: widget.maxChapter,
+      ahead: count,
+      imageCount: preCacheCount > 0 ? preCacheCount : 1,
+      loadChapter: loadChapter,
+      chapterIdOf: (chapter) =>
+          widget.chapterIdOf?.call(chapter) ?? data.chapterId,
+      onFirstImage: (key, chapterId) {
+        if (_disposed || !mounted) return;
+        _imagePrecache.preload(
+          _imageProvider(key, chapterId: chapterId, providerPage: 1),
+          configuration,
+        );
+      },
+      onImage: (key, chapterId) {
+        if (_disposed || !mounted || key.startsWith('file://')) return;
+        _imageDownloads.preload(key, data.sourceKey, data.comicId, chapterId);
+      },
+    );
   }
 
   void _schedulePrecache(int target) {
@@ -355,6 +407,13 @@ class GalleryModeState extends State<ReaderGalleryView>
     );
     if (_lastPrecache == inputs) return;
     _lastPrecache = inputs;
+    // Warm the next chapter(s) as soon as the chapter is on screen instead of
+    // waiting for the last pages. The source call and first decode are the
+    // slow part of a chapter turn; starting it at page one gives the request
+    // the whole chapter's reading time. Repeated calls are no-ops per chapter.
+    if (!data.lastChapter) {
+      _warmUpcomingChapters(configuration);
+    }
     final decoded = <ReaderImageProvider>[];
     final retained = <ReaderImageProvider>[];
     void addPage(int target, List<ReaderImageProvider> providers) {

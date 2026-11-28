@@ -9,6 +9,7 @@ class ReaderContinuousData {
     required this.lastChapter,
     required this.maxChapter,
     required this.preloadCount,
+    this.preloadChapters = 1,
     required this.splitWideImages,
     required this.invertSplit,
     required this.scrollSpeed,
@@ -30,6 +31,9 @@ class ReaderContinuousData {
   final bool lastChapter;
   final int maxChapter;
   final int preloadCount;
+
+  /// How many following chapters the waterfall keeps fetched ahead.
+  final int preloadChapters;
   final bool splitWideImages;
   final bool invertSplit;
   final double scrollSpeed;
