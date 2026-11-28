@@ -3,12 +3,14 @@ package com.github.cyrilpeng.veneranext
 import android.Manifest
 import android.app.Activity
 import android.content.ContentResolver
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
@@ -118,6 +120,9 @@ class MainActivity : FlutterFragmentActivity() {
         ).setMethodCallHandler { call, res ->
             when (call.method) {
                 "getProxy" -> res.success(getProxy())
+                "isIgnoringBatteryOptimizations" -> res.success(isIgnoringBatteryOptimizations())
+                "requestIgnoreBatteryOptimizations" ->
+                    requestIgnoreBatteryOptimizations(res)
                 "setScreenOn" -> {
                     val set = call.argument<Boolean>("set") ?: false
                     if (set) {
@@ -203,6 +208,44 @@ class MainActivity : FlutterFragmentActivity() {
                     textShareHandler = null
                 }
             })
+    }
+
+    private fun powerManager(): PowerManager? =
+        getSystemService(Context.POWER_SERVICE) as? PowerManager
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        return powerManager()?.isIgnoringBatteryOptimizations(packageName) ?: true
+    }
+
+    private fun requestIgnoreBatteryOptimizations(result: MethodChannel.Result) {
+        if (isIgnoringBatteryOptimizations()) {
+            result.success(true)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            result.success(true)
+            return
+        }
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        intent.data = Uri.parse("package:$packageName")
+        try {
+            startContractForResult(
+                ActivityResultContracts.StartActivityForResult(),
+                intent
+            ) {
+                result.success(isIgnoringBatteryOptimizations())
+            }
+        } catch (error: Exception) {
+            // Some vendors do not implement the per-app dialog. Send the user
+            // to the whitelist screen instead of failing the whole request.
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                result.success(false)
+            } catch (_: Exception) {
+                result.error("battery_optimization_error", error.message, null)
+            }
+        }
     }
 
     private fun getProxy(): String {

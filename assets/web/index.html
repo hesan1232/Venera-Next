@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<title>Venera Web</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="shell">
+  <aside id="sidebar">
+    <a class="brand" href="#/library">
+      <span class="logo">V</span>
+      <span class="brand-text"><strong>Venera</strong><small>Web Library</small></span>
+    </a>
+    <nav id="nav">
+      <a class="nav-item" href="#/library" data-route="library"><span class="ico">▤</span>书架</a>
+      <a class="nav-item" href="#/search" data-route="search"><span class="ico">⌕</span>搜索</a>
+      <a class="nav-item" href="#/sources" data-route="sources"><span class="ico">◈</span>来源</a>
+      <a class="nav-item" href="#/api" data-route="api"><span class="ico">⌘</span>接口</a>
+    </nav>
+    <div class="sidebar-foot">
+      <button id="theme-btn" class="ghost-btn" type="button">主题 · 自动</button>
+      <button id="auth-btn" class="ghost-btn" type="button">访问令牌</button>
+      <div class="hint" id="server-hint"></div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <header id="topbar">
+      <button id="back" class="icon-btn" type="button" hidden aria-label="返回">←</button>
+      <div id="crumb" class="crumb"></div>
+      <div id="top-actions" class="top-actions"></div>
+    </header>
+    <div id="app"></div>
+  </main>
+</div>
+
+<div id="loading" class="loading" hidden><div class="spinner"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<dialog id="auth-dialog">
+  <form method="dialog" id="auth-form">
+    <h3>访问令牌</h3>
+    <p>此服务设置了访问令牌。请在应用中「设置 → Web 服务」查看或复制。</p>
+    <input id="auth-input" type="password" autocomplete="current-password" placeholder="Token">
+    <div class="dialog-actions">
+      <button value="cancel" class="ghost">取消</button>
+      <button value="ok" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>

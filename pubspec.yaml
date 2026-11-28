@@ -121,6 +121,7 @@ flutter:
     - assets/tags.json
     - assets/tags_tw.json
     - assets/opencc.txt
+    - assets/web/
 # fonts:
 
 # Metadata consumed by .github/scripts/build_arch_package.py (no Dart package required).

@@ -36,6 +36,25 @@ abstract final class AppPreferences {
     'reverseChapterOrder',
     false,
   );
+
+  /// Embedded LAN web reader. Off by default: it binds a socket and may expose
+  /// the library to everybody on the local network.
+  static const webServiceEnabled = BoolPreference('webServiceEnabled', false);
+  static const webServicePort = RoundedIntPreference(
+    'webServicePort',
+    8080,
+    min: 1024,
+    max: 65535,
+  );
+  static const webServiceLocalOnly = BoolPreference(
+    'webServiceLocalOnly',
+    false,
+  );
+  static const webServiceToken = StringPreference('webServiceToken', '');
+  static const webServiceAllowProgressWrite = BoolPreference(
+    'webServiceAllowProgressWrite',
+    true,
+  );
   static const all = <Preference<Object>>[
     language,
     checkUpdateOnStart,
@@ -43,6 +62,11 @@ abstract final class AppPreferences {
     cacheSize,
     authorizationRequired,
     reverseChapterOrder,
+    webServiceEnabled,
+    webServicePort,
+    webServiceLocalOnly,
+    webServiceToken,
+    webServiceAllowProgressWrite,
   ];
 }
 
@@ -153,6 +177,10 @@ abstract final class DiscoveryPreferences {
   static const defaultSearchTarget = NullableStringPreference(
     'defaultSearchTarget',
   );
+  /// Whether the search page starts in aggregated mode. Kept separate from
+  /// `defaultSearchTarget` so toggling the checkbox never forgets the last
+  /// single-source target.
+  static const aggregatedSearch = BoolPreference('aggregatedSearch', false);
   static const all = <Preference<Object?>>[
     comicDisplayMode,
     comicTileScale,
@@ -168,6 +196,7 @@ abstract final class DiscoveryPreferences {
     favoritePages,
     searchSources,
     defaultSearchTarget,
+    aggregatedSearch,
   ];
 }
 
