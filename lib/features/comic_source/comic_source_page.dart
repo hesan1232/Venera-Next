@@ -18,6 +18,7 @@ import 'package:venera_next/components/scroll.dart';
 import 'package:venera_next/foundation/app.dart';
 import 'package:venera_next/foundation/app_data_operations.dart';
 import 'package:venera_next/features/comic_source/comic_source_manager.dart';
+import 'package:venera_next/features/comic_details/comic_details_cache.dart';
 import 'package:venera_next/features/comic_source/source.dart';
 import 'package:venera_next/foundation/context.dart';
 import 'package:venera_next/foundation/log.dart';
@@ -27,6 +28,8 @@ import 'package:venera_next/foundation/translations.dart';
 import 'package:venera_next/foundation/widget_utils.dart';
 
 import 'parser.dart' show compareSemVer;
+import 'mirror_probe.dart';
+import 'mirror_probe_dialog.dart';
 import 'source_installation_widgets.dart';
 import 'source_installations_scope.dart';
 import 'source_translation.dart';
@@ -654,6 +657,56 @@ class _SliverComicSourceState extends SettingsSaveState<_SliverComicSource> {
     );
   }
 
+  /// Measure every mirror of one setting, then persist the user's pick.
+  ///
+  /// Choosing is always explicit: the probe never switches a host on its own,
+  /// because a single timed-out request is too weak a signal to rewrite a
+  /// working configuration.
+  Future<void> _probeMirrors(
+    ComicSource target, {
+    required String settingKey,
+    required String title,
+    required List<String> candidates,
+    required String? current,
+  }) async {
+    if (!NavigationAdmission.allows(context)) return;
+    final picked = await showMirrorProbeDialog(
+      context,
+      group: MirrorSettingGroup(
+        sourceKey: target.key,
+        sourceName: target.name,
+        settingKey: settingKey,
+        title: title,
+        candidates: candidates,
+        current: current,
+      ),
+    );
+    if (picked == null || picked == current) return;
+    if (!_current(target)) return;
+    await _saveValue(target, settingKey, picked);
+    if (!_current(target)) return;
+    await _applyMirrorChange(target.key);
+  }
+
+  /// Make a mirror switch take effect.
+  ///
+  /// Sources commonly read their base URL once in `init()` and keep it in a
+  /// field (ikmmh stores it in a static), so writing the setting alone leaves
+  /// the running instance pointing at the old host. The details cache also
+  /// holds cover and page URLs built from that host, so it has to go too.
+  Future<void> _applyMirrorChange(String sourceKey) async {
+    await ComicDetailsCache.instance.invalidateSource(sourceKey);
+    if (widget.manager.isClosing) return;
+    try {
+      await widget.manager.reload();
+    } catch (error, stack) {
+      Log.error('ComicSourcePage', error, stack);
+      if (mounted) {
+        context.showMessage(message: 'Failed to reload sources'.tl);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!expanded) {
@@ -792,12 +845,36 @@ class _SliverComicSourceState extends SettingsSaveState<_SliverComicSource> {
           final options = (item.value['options'] as List);
           final current =
               source.data['settings']?[key] ?? item.value['default'];
+          final mirrorCandidates = mirrorCandidatesOf(item.value);
+          final titleText = (item.value['title'] as String).ts(target.key);
           yield Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text((item.value['title'] as String).ts(target.key)),
+                if (mirrorCandidates.length < 2)
+                  Text(titleText)
+                else
+                  Row(
+                    children: [
+                      Expanded(child: Text(titleText)),
+                      TextButton.icon(
+                        onPressed: acceptsSettingsChanges
+                            ? () => unawaited(
+                                _probeMirrors(
+                                  target,
+                                  settingKey: key,
+                                  title: item.value['title'] as String,
+                                  candidates: mirrorCandidates,
+                                  current: current is String ? current : null,
+                                ),
+                              )
+                            : null,
+                        icon: const Icon(Icons.speed, size: 16),
+                        label: Text('Speed test'.tl),
+                      ),
+                    ],
+                  ),
                 const SizedBox(height: 8),
                 Semantics(
                   label: (item.value['title'] as String).ts(target.key),
